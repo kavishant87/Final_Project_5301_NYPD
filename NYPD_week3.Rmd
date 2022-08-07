@@ -1,0 +1,147 @@
+---
+title: "NYPD Shooting Incident"
+date: 08/07/22
+output: 
+pdf_document: default
+html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(caret)
+library(ggmap)
+library(scales)
+library(leaps)
+library(randomForest)
+```
+
+## Importing Data
+Data was downloaded from : <https://catalog.data.gov/dataset>
+Imports the shooting project data set in a reproducible manner.
+
+```{r importData}
+df_nypd <- read.csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+```
+
+## Tidy and Transform your data
+
+```{r summaryData, echo=TRUE}
+summary(df_nypd)
+colnames(df_nypd)
+dim(df_nypd)
+str(df_nypd)
+```
+
+### Cleaning up data sets
+
+# Removing zero variance using nearZerVar function.
+
+```{r RemoveZerovariance, echo=TRUE}
+non_zer_var <- nearZeroVar(df_nypd)
+nypd_clean <- df_nypd[, -non_zer_var]
+dim(nypd_clean)
+```
+
+# Getting rid of any columns not needed for future analysis and graph report.
+
+```{r RemoveColumns, echo=TRUE}
+nypd_data <- select(df_nypd, -c(PRECINCT,JURISDICTION_CODE))
+sapply(nypd_data, function(x) sum(is.na(x)))
+summary(nypd_data)
+
+```
+
+# Removing all NA values in nypd data set.
+
+```{r RemoveNAvalues, echo=TRUE}
+na_val <- sapply(nypd_data,function(x) mean(is.na(x))) > 0.95
+nypd_data <- nypd_data[,na_val == FALSE]
+dim(nypd_data)
+```
+
+# Date format is changed for future use as graph presentation.
+
+```{r DateTransform, echo=TRUE}
+nypd_data$y_month <- strftime(as.Date(df_nypd$OCCUR_DATE,"%m/%d/%Y"), "%Y-%m")
+
+```
+# Visualizations and Analysis.
+
+# Analysing the nypd data set using correlation of date and time
+
+```{r Analyse1, echo=TRUE}
+d_date <- as.numeric(as.factor(nypd_data$OCCUR_DATE))
+d_time <- as.numeric(as.factor(nypd_data$OCCUR_TIME))
+corr.date.time <- cor.test(x = d_date,
+                           y = d_time)
+corr.date.time
+
+```
+
+# Visualization 1: NYPD shootings by borough plot.
+
+```{r Visual1, echo=TRUE}
+boroTable <- table(nypd_data$BORO)
+hist(boroTable)
+boros <- data.frame(
+                    Borough = c("Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island"),
+                    NumberofShootings = c(7402, 10365, 3265, 3828, 736)
+)
+theme_update(plot.title = element_text(hjust = 0.5))
+ggplot(boros, aes(x = Borough, y = NumberofShootings,fill = Borough)) +
+    geom_bar(stat = "identity") + 
+    ggtitle("NYPD Shootings Per Borough")
+```
+
+More than 10000 shootings occurred in Brooklyn city of NewYork.
+Least occurred in Staten Island as per dataset given.
+
+# Visualization 2: Perp age vs victims age plot with the year of 2021.
+
+```{r visual2 ,echo=TRUE}
+perp_age<- nypd_data$PERP_AGE_GROUP 
+vic_age <- nypd_data$VIC_AGE_GROUP
+filter(nypd_data, y_month == 2021) %>%
+  ggplot( aes(perp_age, vic_age, color = nypd_data$LOCATION_DESC), xlab = perp_age, ylab = vic_age) +
+  geom_point() 
+```
+
+Most of the perp targets victims by their younger/senior citizen in Multi dwell apartments at the age of 25-44.
+From 2019 Covid season, most perp race was black hispanic. Spike happened in mid july 2020 from brooklyn city.
+
+# Linear Regression model to built
+
+```{r lm model, echo=TRUE}
+nypd_data <- nypd_data %>% select(OCCUR_DATE,BORO,LOCATION_DESC,PERP_AGE_GROUP,PERP_SEX,PERP_RACE,VIC_AGE_GROUP,VIC_SEX,VIC_RACE) %>% mutate(OCCUR_DATE = as.Date(OCCUR_DATE,"%m/%d/%y"))
+head(nypd_data)
+
+shootings_by_date <- nypd_data %>% group_by(OCCUR_DATE) %>% summarise(COUNT = n())
+ggplot( data = shootings_by_date, aes( OCCUR_DATE, COUNT )) +
+geom_line() +
+xlab("Date") + ylab("Shootings")
+filter(shootings_by_date, COUNT > 150)
+ggplot( data = shootings_by_date, aes( x=(julian(OCCUR_DATE)%%365)/365, y=COUNT )) +
+  geom_point() +
+  geom_smooth(method="lm", formula= y ~ sin(2*pi*x)+cos(2*pi*x) ) +
+  xlab("year") + ylab("Shootings")
+```
+
+# Analysis with the report for NYPD shootings:
+
+We can now summarize the conclusions of all the NYPD analysis and visualizations performed.
+The number of shooting incidents in NYPD had been decreasing steadily since 2006 until recently mid of 2021, when a significant spike was observed.
+Most of the shootings occurred locations were multi dwell apartments and ATM,BANK during Covid season.
+Suspect age targets younger and senior citizen victims age group.
+
+The spike observed in mid 2020, coincides with the COVID-19 lockdown situation, which probably suggests that the increase in number of shootings was the result of the higher number of unemployment caused by the economic impact of the lockdown.
+The boroughs of Bronx and Brooklyn are the areas with the highest number of incidents per million inhabitants. These two areas are also the boroughs that experience higher rates of poverty, which suggests a possible correlation between the two data points.
+
+Most of the perp targets victims by their younger/senior citizen in Multi dwell apartments at the age of 25-44.
+From 2019 Covid season, most perp race was black hispanic. Spike happened in mid july 2020 from brooklyn city.
+
+# Bias Identification:
+
+The data given was written by NYPD department. They might have accidentally lost some documents or many shootings long back at time goes unreported.
